@@ -9,6 +9,10 @@ import base64
 import io
 import os
 
+from config import MISSING_VALUES, FILE_CONFIG
+from processors.ai_estimator import AIEstimator
+
+
 app = FastAPI(title="MoSPI AI Survey API")
 
 # Enable CORS
@@ -21,6 +25,7 @@ app.add_middleware(
 )
 
 DATA_STORE = {}
+ai_estimator = AIEstimator()
 
 class Base64File(BaseModel):
     filename: str
@@ -45,15 +50,17 @@ def read_file(file: UploadFile = None, base64_file: Base64File = None):
     else:
         raise HTTPException(status_code=400, detail="No file provided")
     
+    if not any(filename.endswith(ext) for ext in FILE_CONFIG['allowed_extensions']):
+        raise HTTPException(status_code=400, detail="Unsupported file type")
+    
     try:
         if filename.endswith(".csv"):
-            df = pd.read_csv(io.BytesIO(content))
+            df = pd.read_csv(io.BytesIO(content), na_values=MISSING_VALUES)
         elif filename.endswith((".xls", ".xlsx")):
-            df = pd.read_excel(io.BytesIO(content))
-        else:
-            raise HTTPException(status_code=400, detail="Unsupported file type")
+            df = pd.read_excel(io.BytesIO(content), na_values=MISSING_VALUES)
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Error reading file: {str(e)}")
+    
     return df
 
 def validate_data(df: pd.DataFrame):
@@ -80,13 +87,16 @@ def ai_hybrid_process(df: pd.DataFrame, numerical_method="Smart Mean/Median", te
     }
     return df_processed, ai_report
 
-def generate_report(df: pd.DataFrame, ai_report: dict):
+def generate_report(df: pd.DataFrame, ai_report: dict, target_var=None):
     report = {
         "num_rows": df.shape[0],
         "num_columns": df.shape[1],
         "ai_summary": ai_report,
         "missing_values_after_processing": to_python_dict(df.isnull().sum().to_dict())
     }
+    if target_var:
+        estimate = ai_estimator.generate_ai_enhanced_estimates(df, target_var)
+        report["ai_estimates"] = estimate
     return report
 
 # ---------- API Endpoints ----------
@@ -126,6 +136,18 @@ async def ai_process(numerical_method: str = Form("Smart Mean/Median"), text_met
             "columns": int(df_processed.shape[1]),
             "ai_report": ai_report}
 
+@app.post("/ai-estimate")
+async def ai_estimate(target_var: str = Form(...), method: str = Form("ai_enhanced_hybrid")):
+    df = DATA_STORE.get("ai_processed_data")
+    if df is None:
+        return JSONResponse(status_code=400, content={"error": "AI processing not done yet"})
+    try:
+        estimate = ai_estimator.generate_ai_enhanced_estimates(df, target_var, method)
+        DATA_STORE["ai_estimate"] = estimate
+        return {"target_variable": target_var, "ai_estimate": estimate}
+    except Exception as e:
+        return JSONResponse(status_code=400, content={"error": str(e)})
+
 @app.get("/missing-analysis")
 async def missing_analysis():
     df = DATA_STORE.get("raw_data")
@@ -133,21 +155,13 @@ async def missing_analysis():
         return JSONResponse(status_code=400, content={"error": "No data uploaded"})
     return {"missing_values": to_python_dict(df.isnull().sum().to_dict())}
 
-@app.post("/estimate")
-async def estimate():
-    df = DATA_STORE.get("ai_processed_data")
-    if df is None:
-        return JSONResponse(status_code=400, content={"error": "AI processing not done yet"})
-    estimation = to_python_dict(df.select_dtypes(include=np.number).sum().to_dict())
-    return {"estimation": estimation}
-
 @app.post("/generate-report")
-async def generate_report_endpoint():
+async def generate_report_endpoint(target_var: str = Form(None)):
     df = DATA_STORE.get("ai_processed_data")
     ai_report = DATA_STORE.get("ai_report")
     if df is None or ai_report is None:
         return JSONResponse(status_code=400, content={"error": "AI processing not done yet"})
-    report = generate_report(df, ai_report)
+    report = generate_report(df, ai_report, target_var)
     DATA_STORE["report"] = report
     return report
 
@@ -156,8 +170,6 @@ async def download_processed():
     df = DATA_STORE.get("ai_processed_data")
     if df is None:
         return JSONResponse(status_code=404, content={"error": "No processed data available. Please run AI processing first."})
-    
     file_path = "processed_data.csv"
     df.to_csv(file_path, index=False)
     return FileResponse(file_path, filename="ai_processed_data.csv", media_type="text/csv")
-

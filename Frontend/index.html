@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>MoSPI AI Survey Frontend</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            primary: '#2E86AB',
+            accent: '#A23B72'
+          }
+        }
+      }
+    }
+  </script>
+</head>
+<body class="bg-gray-50 text-gray-800">
+  <header class="bg-white sticky top-0 z-10 shadow-sm">
+    <div class="max-w-6xl mx-auto px-4 py-4">
+      <h1 class="text-xl font-semibold text-primary">MoSPI AI-Enhanced Survey Analysis</h1>
+    </div>
+  </header>
+
+  <main class="max-w-6xl mx-auto px-4 py-6 space-y-6">
+    <!-- Upload and Options -->
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+      <section class="bg-white rounded-xl shadow p-4">
+        <h3 class="text-lg font-semibold text-accent">Upload data</h3>
+        <div class="mt-3 flex flex-wrap items-center gap-3">
+          <input id="fileInput" type="file" accept=".csv,.xlsx,.xls"
+                 class="block w-full sm:w-auto text-sm text-gray-700 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-primary file:text-white hover:file:bg-blue-700" />
+          <button id="btnUpload"
+                  class="px-4 py-2 rounded-lg bg-primary text-white hover:bg-blue-700 disabled:opacity-60">
+            Upload
+          </button>
+        </div>
+        <p class="text-xs text-gray-500 mt-2">CSV/XLSX supported. Validation summary will appear below.</p>
+        <div id="uploadStatus" class="mt-3 text-sm"></div>
+        <div id="validationBox" class="mt-3"></div>
+      </section>
+
+      <section class="bg-white rounded-xl shadow p-4">
+        <h3 class="text-lg font-semibold text-accent">Processing options</h3>
+        <div class="mt-3 grid sm:grid-cols-2 gap-3">
+          <div>
+            <label class="block text-sm mb-1">Numerical method</label>
+            <select id="numericalMethod" class="w-full rounded-lg border-gray-300">
+              <option>Smart MeanMedian</option>
+              <option>ML-Based Prediction</option>
+              <option>Hybrid Statistical</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-sm mb-1">Text method</label>
+            <select id="textMethod" class="w-full rounded-lg border-gray-300">
+              <option>AI Text Generation</option>
+              <option>Context-Aware Mode</option>
+              <option>Hybrid AIStatistical</option>
+            </select>
+          </div>
+        </div>
+        <div class="mt-3 flex gap-3">
+          <button id="btnTraditional" class="px-4 py-2 rounded-lg border border-gray-300 hover:bg-gray-50">
+            Run Traditional
+          </button>
+          <button id="btnAI" class="px-4 py-2 rounded-lg bg-accent text-white hover:bg-pink-700 disabled:opacity-60">
+            Run AI Hybrid
+          </button>
+        </div>
+      </section>
+    </div>
+
+    <!-- Results panels -->
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+      <section class="bg-white rounded-xl shadow p-4">
+        <h3 class="text-lg font-semibold text-accent">Missing analysis</h3>
+        <div id="missingBox" class="mt-3 text-sm text-gray-700">
+          <p class="text-gray-500">Run after upload.</p>
+        </div>
+      </section>
+
+      <section class="bg-white rounded-xl shadow p-4">
+        <h3 class="text-lg font-semibold text-accent">AI processing report</h3>
+        <div id="aiReportBox" class="mt-3 text-sm text-gray-700">
+          <p class="text-gray-500">Run AI Hybrid to populate.</p>
+        </div>
+      </section>
+
+      <section class="bg-white rounded-xl shadow p-4">
+        <h3 class="text-lg font-semibold text-accent">Estimate</h3>
+        <div class="mt-3">
+          <button id="btnEstimate" class="px-4 py-2 rounded-lg border border-gray-300 hover:bg-gray-50">
+            Compute Estimate
+          </button>
+        </div>
+        <div id="estimateBox" class="mt-3 text-sm"></div>
+      </section>
+    </div>
+
+    <!-- Report + Download -->
+    <section class="bg-white rounded-xl shadow p-4">
+      <h3 class="text-lg font-semibold text-accent">Report generation</h3>
+      <div class="mt-3 flex gap-3">
+        <button id="btnGenerateReport" class="px-4 py-2 rounded-lg bg-primary text-white hover:bg-blue-700 disabled:opacity-60">
+          Generate Report
+        </button>
+        <a id="downloadLink" class="inline-block" href="#" target="_blank" rel="noopener">
+          <button id="btnDownload" class="px-4 py-2 rounded-lg border border-gray-300 hover:bg-gray-50" disabled>
+            Download Processed CSV
+          </button>
+        </a>
+      </div>
+      <div id="reportBox" class="mt-4 prose max-w-none"></div>
+    </section>
+  </main>
+
+  <script>
+    const base = 'http://localhost:8000';
+    const qs = (s) => document.querySelector(s);
+
+    const fileInput = qs('#fileInput');
+    const btnUpload = qs('#btnUpload');
+    const btnTraditional = qs('#btnTraditional');
+    const btnAI = qs('#btnAI');
+    const btnEstimate = qs('#btnEstimate');
+    const btnGenerateReport = qs('#btnGenerateReport');
+    const btnDownload = qs('#btnDownload');
+    const downloadLink = qs('#downloadLink');
+
+    const uploadStatus = qs('#uploadStatus');
+    const validationBox = qs('#validationBox');
+    const missingBox = qs('#missingBox');
+    const aiReportBox = qs('#aiReportBox');
+    const estimateBox = qs('#estimateBox');
+    const reportBox = qs('#reportBox');
+
+    const numericalMethod = qs('#numericalMethod');
+    const textMethod = qs('#textMethod');
+
+    function setBusy(el, busy=true, label) {
+      el.disabled = busy;
+      if (label) el.textContent = label;
+    }
+
+    function badge(text, ok=true) {
+      return `<span class="inline-flex items-center rounded-full px-2 py-0.5 text-xs ${ok ? 'bg-blue-50 text-blue-700' : 'bg-red-50 text-red-700'}">${text}</span>`;
+    }
+
+    function kvGrid(obj) {
+      if (!obj || typeof obj !== 'object') return '<p class="text-gray-500 text-sm">No data</p>';
+      const keys = Object.keys(obj);
+      if (!keys.length) return '<p class="text-gray-500 text-sm">No data</p>';
+      return `<div class="grid grid-cols-1 sm:grid-cols-5 gap-2">
+        ${keys.map(k => `
+          <div class="col-span-2 bg-gray-50 rounded px-2 py-1 text-xs font-medium">${k}</div>
+          <div class="col-span-3 bg-gray-50 rounded px-2 py-1 text-xs">
+            ${typeof obj[k] === 'object' ? `<pre class="whitespace-pre-wrap">${JSON.stringify(obj[k], null, 2)}</pre>` : obj[k]}
+          </div>
+        `).join('')}
+      </div>`;
+    }
+
+    async function uploadData() {
+      const f = fileInput.files[0];
+      if (!f) { uploadStatus.innerHTML = `${badge('Error', false)} Select a file`; return; }
+      setBusy(btnUpload, true, 'Uploading...');
+      const fd = new FormData();
+      fd.append('file', f);
+      try {
+        const res = await fetch(`${base}/upload-data`, { method: 'POST', body: fd });
+        const json = await res.json();
+        if (!res.ok) throw new Error(json.detail || json.error || 'Upload failed');
+        uploadStatus.innerHTML = `${badge('OK')} ${json.message || 'Uploaded'}`;
+        validationBox.innerHTML = kvGrid(json.validation || {});
+        await missingAnalysis();
+      } catch (e) {
+        uploadStatus.innerHTML = `${badge('Error', false)} ${e.message}`;
+      } finally {
+        setBusy(btnUpload, false, 'Upload');
+      }
+    }
+
+    async function traditionalProcess() {
+      setBusy(btnTraditional, true, 'Processing...');
+      try {
+        const res = await fetch(`${base}/traditional-process`, { method: 'POST' });
+        const json = await res.json();
+        if (!res.ok) throw new Error(json.detail || json.error || 'Processing failed');
+        aiReportBox.innerHTML = `
+          <div class="border-l-4 border-blue-500 bg-blue-50 p-3 rounded">
+            <div class="font-semibold">Traditional complete</div>
+            <div class="text-sm mt-1">${json.rows} rows, ${json.columns} columns.</div>
+          </div>`;
+        btnDownload.disabled = false;
+        downloadLink.href = `${base}/download-processed`;
+      } catch (e) {
+        aiReportBox.innerHTML = `<div class="text-red-600 text-sm">${e.message}</div>`;
+      } finally {
+        setBusy(btnTraditional, false, 'Run Traditional');
+      }
+    }
+
+    async function aiProcess() {
+      setBusy(btnAI, true, 'AI Processing...');
+      const fd = new FormData();
+      fd.append('numericalMethod', numericalMethod.value);
+      fd.append('textMethod', textMethod.value);
+      try {
+        const res = await fetch(`${base}/ai-process`, { method: 'POST', body: fd });
+        const json = await res.json();
+        if (!res.ok) throw new Error(json.detail || json.error || 'AI process failed');
+        const report = json.aiReport || json.aireport || {};
+        aiReportBox.innerHTML = `
+          <div class="space-y-3">
+            <div class="border-l-4 border-pink-600 bg-pink-50 p-3 rounded">
+              <div class="font-semibold">Message</div>
+              <div class="text-sm mt-1">${json.message || 'Done'}</div>
+            </div>
+            <div>
+              <div class="font-semibold mb-1">AI Insights</div>
+              <pre class="bg-gray-50 rounded p-2 text-xs overflow-auto">${JSON.stringify(report.aiInsights || report.aiinsights || [], null, 2)}</pre>
+            </div>
+            <div>
+              <div class="font-semibold mb-1">Processing Details</div>
+              <pre class="bg-gray-50 rounded p-2 text-xs overflow-auto">${JSON.stringify(report.processingDetails || report.processingdetails || [], null, 2)}</pre>
+            </div>
+            <div>
+              <div class="font-semibold mb-1">Column Improvements</div>
+              <pre class="bg-gray-50 rounded p-2 text-xs overflow-auto">${JSON.stringify(report.columnImprovements || report.columnimprovements || {}, null, 2)}</pre>
+            </div>
+            <div>
+              <div class="font-semibold mb-1">Confidence Scores</div>
+              <pre class="bg-gray-50 rounded p-2 text-xs overflow-auto">${JSON.stringify(report.confidenceScores || report.confidencescores || {}, null, 2)}</pre>
+            </div>
+            <div>
+              <div class="font-semibold mb-1">Text Generation Results</div>
+              <pre class="bg-gray-50 rounded p-2 text-xs overflow-auto">${JSON.stringify(report.textGenerationResults || report.textgenerationresults || [], null, 2)}</pre>
+            </div>
+            <div>
+              <div class="font-semibold mb-1">Overall Confidence</div>
+              <pre class="bg-gray-50 rounded p-2 text-xs overflow-auto">${JSON.stringify(report.overallConfidence || report.overallconfidence || 0, null, 2)}</pre>
+            </div>
+          </div>
+        `;
+        btnDownload.disabled = false;
+        downloadLink.href = `${base}/download-processed`;
+      } catch (e) {
+        aiReportBox.innerHTML = `<div class="text-red-600 text-sm">${e.message}</div>`;
+      } finally {
+        setBusy(btnAI, false, 'Run AI Hybrid');
+      }
+    }
+
+    async function missingAnalysis() {
+      try {
+        const res = await fetch(`${base}/missing-analysis`, { method: 'GET' });
+        const json = await res.json();
+        if (!res.ok) throw new Error(json.detail || json.error || 'Missing analysis failed');
+        missingBox.innerHTML = kvGrid(json);
+      } catch (e) {
+        missingBox.innerHTML = `<p class="text-red-600 text-sm">${e.message}</p>`;
+      }
+    }
+
+    async function estimate() {
+      setBusy(btnEstimate, true, 'Estimating...');
+      try {
+        const res = await fetch(`${base}/estimate`, { method: 'POST' });
+        const json = await res.json();
+        if (!res.ok) throw new Error(json.detail || json.error || 'Estimate failed');
+        estimateBox.innerHTML = kvGrid(json.estimation || json);
+      } catch (e) {
+        estimateBox.innerHTML = `<p class="text-red-600 text-sm">${e.message}</p>`;
+      } finally {
+        setBusy(btnEstimate, false, 'Compute Estimate');
+      }
+    }
+
+    async function generateReport() {
+      setBusy(btnGenerateReport, true, 'Generating...');
+      try {
+        const res = await fetch(`${base}/generate-report`, { method: 'POST' });
+        const json = await res.json();
+        if (!res.ok) throw new Error(json.detail || json.error || 'Report failed');
+        if (json && json.html) {
+          reportBox.innerHTML = json.html;
+        } else {
+          const content = typeof json === 'string' ? json : JSON.stringify(json, null, 2);
+          reportBox.innerHTML = `<pre class="bg-gray-50 rounded p-3 text-xs overflow-auto">${content}</pre>`;
+        }
+      } catch (e) {
+        reportBox.innerHTML = `<p class="text-red-600 text-sm">${e.message}</p>`;
+      } finally {
+        setBusy(btnGenerateReport, false, 'Generate Report');
+      }
+    }
+
+    btnUpload.addEventListener('click', uploadData);
+    btnTraditional.addEventListener('click', traditionalProcess);
+    btnAI.addEventListener('click', aiProcess);
+    btnEstimate.addEventListener('click', estimate);
+    btnGenerateReport.addEventListener('click', generateReport);
+    btnDownload.addEventListener('click', (e) => { if (btnDownload.disabled) e.preventDefault(); });
+  </script>
+</body>
+</html>

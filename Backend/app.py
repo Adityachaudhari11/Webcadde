@@ -11,6 +11,11 @@ import os
 
 app = FastAPI(title="MoSPI AI Survey API")
 
+
+origins = [
+    "https://webcade.vercel.app/",  # <-- Replace with actual Vercel URL
+    "http://localhost:3000",                 # for local testing (optional)
+]
 # Enable CORS
 app.add_middleware(
     CORSMiddleware,
